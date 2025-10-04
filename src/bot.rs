@@ -373,23 +373,25 @@ let mut stream = stream
             let start_time = start_time.clone();
 
             tokio::spawn(async move {
-                let now = chrono::Utc::now();
-                let elapsed_secs = (now - *start_time).num_seconds().max(1) as f64;
+let now = chrono::Utc::now();
+let elapsed_secs = (now - *start_time).num_seconds().max(1) as f64;
 
-                let percent = progress as f64 / length as f64;
-                let progress_bar = create_progress_bar(percent, 10);
-           let uploaded = bytesize::to_string(progress as u64, false); // MB, GB
-let total = bytesize::to_string(length as u64, false);      // MB, GB
-let speed_str = format!("{}/s", bytesize::to_string(speed as u64, false)); // MB/s, GB/s
-     let speed_str = format!("{}/s", bytesize::to_string(speed as u64, true));
+let percent = progress as f64 / length as f64;
+let progress_bar = create_progress_bar(percent, 10);
 
-                let remaining = length.saturating_sub(progress);
-                let eta_secs = if speed > 0.0 {
-                    (remaining as f64 / speed).round() as u64
-                } else {
-                    0
-                };
-                let eta_str = format_eta(eta_secs);
+let uploaded = bytesize::to_string(progress as u64, false); // MB/GB
+let total = bytesize::to_string(length as u64, false);      // MB/GB
+
+let speed = progress as f64 / elapsed_secs; // 👈 ADD THIS LINE
+let speed_str = format!("{}/s", bytesize::to_string(speed as u64, false)); // MB/s
+
+let remaining = length.saturating_sub(progress);
+let eta_secs = if speed > 0.0 {
+    (remaining as f64 / speed).round() as u64
+} else {
+    0
+};
+let eta_str = format_eta(eta_secs);
 
                 let msg_text = format!(
                     "\n\n⏳ <b>Uploading...</b>\n\n\
