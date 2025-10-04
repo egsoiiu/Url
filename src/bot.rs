@@ -122,11 +122,8 @@ async fn handle_message(&self, msg: Message) -> Result<()> {
     }
 
  if let Chat::User(_) = msg.chat() {
-    // Clone the message text early to avoid borrow issues
-    let text = match msg.text() {
-        Some(text) => text.trim().to_string(),
-        None => return Ok(()),
-    };
+    // Handle URL with custom filename syntax (url | filename)
+    let text = msg.text().trim();
     
     // Check if the message contains pipe syntax for custom filename
     if let Some(pipe_pos) = text.find('|') {
@@ -143,7 +140,7 @@ async fn handle_message(&self, msg: Message) -> Result<()> {
     }
     
     // Fallback: try parsing the entire message as a plain URL (without custom filename)
-    if let Ok(url) = Url::parse(&text) {
+    if let Ok(url) = Url::parse(text) {
         return self.handle_url(msg, url, None).await;
     }
 }
