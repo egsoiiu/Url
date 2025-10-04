@@ -156,19 +156,20 @@ async fn handle_message(&self, msg: Message) -> Result<()> {
 /// It will reply with a welcome message.
 async fn handle_start(&self, msg: Message) -> Result<()> {
     msg.reply(InputMessage::html(
-    " 𝑾𝒆𝒍𝒄𝒐𝒎𝒆 𝒕𝒐 𝒕𝒉𝒆 𝑬𝒙𝒄𝒍𝒖𝒔𝒊𝒗𝒆 𝑭𝒊𝒍𝒆 𝑼𝒑𝒍𝒐𝒂𝒅𝒆𝒓\n\
+    "𝑊𝑒𝑙𝑐𝑜𝑚𝑒 𝑡𝑜 𝑈𝑅𝐿 𝑈𝑝𝑙𝑜𝑎𝑑𝑒𝑟 𝑏𝑜𝑡\n\
 \n\
 𝐶𝑢𝑠𝑡𝑜𝑚 𝑓𝑖𝑙𝑒 𝑛𝑎𝑚𝑖𝑛𝑔\n\
-       ㅤㅤ➠ URL | File_Name\n\
+    ➠ 𝑈𝑅𝐿 | 𝐹𝑖𝑙𝑒_𝑁𝑎𝑚𝑒\n\
 \n\
-𝐹𝑒𝑎𝑡𝑢𝑟𝑒𝑠 :\n\
-     ㅤㅤ➠ ᴄʀᴀᴢʏ ғᴀsᴛ & ꜰʀᴇᴇ\n\
-     ㅤㅤ➠ ᴜᴘ ᴛᴏ 2ɢʙ\n\
-     ㅤㅤ➠ ᴄᴜsᴛᴏᴍ ꜰɪʟᴇ ɴᴀᴍᴇ ᴡɪᴛʜ ᴀᴜᴛᴏ ᴇxᴛᴇɴsɪᴏɴ\n\
+<blockquote>𝐹𝑒𝑎𝑡𝑢𝑟𝑒𝑠:\n\
+ㅤ➠ 𝑐𝑟𝑎𝑧𝑦 𝑓𝑎𝑠𝑡 & 𝑓𝑟𝑒𝑒\n\
+ㅤ➠ 𝑢𝑝 𝑡𝑜 2𝐺𝐵\n\
+ㅤ➠ 𝑐𝑢𝑠𝑡𝑜𝑚 𝑓𝑖𝑙𝑒 𝑛𝑎𝑚𝑒 𝑤𝑖𝑡ℎ 𝑎𝑢𝑡𝑜 𝑒𝑥𝑡𝑒𝑛𝑠𝑖𝑜𝑛</blockquote>\n\
 \n\
-✨ <b>ᴄᴏᴘʏ ᴀɴᴅ ᴘᴀsᴛᴇ ʏᴏᴜʀ ᴜʀʟ ᴛᴏ ɢᴇᴛ sᴛᴀʀᴛᴇᴅ!</b>"
+✨ 𝐶𝑜𝑝𝑦 𝑎𝑛𝑑 𝑃𝑎𝑠𝑡𝑒 𝑦𝑜𝑢𝑟 𝑈𝑅𝐿 𝑡𝑜 𝑔𝑒𝑡 𝑠𝑡𝑎𝑟𝑡𝑒𝑑!"
 ))
 .await?;
+
 
 
 
