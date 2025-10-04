@@ -378,10 +378,10 @@ let mut stream = stream
 
                 let percent = progress as f64 / length as f64;
                 let progress_bar = create_progress_bar(percent, 10);
-                let uploaded = bytesize::to_string(progress as u64, true);
-                let total = bytesize::to_string(length as u64, true);
-                let speed = progress as f64 / elapsed_secs;
-                let speed_str = format!("{}/s", bytesize::to_string(speed as u64, true));
+           let uploaded = bytesize::to_string(progress as u64, false); // MB, GB
+let total = bytesize::to_string(length as u64, false);      // MB, GB
+let speed_str = format!("{}/s", bytesize::to_string(speed as u64, false)); // MB/s, GB/s
+     let speed_str = format!("{}/s", bytesize::to_string(speed as u64, true));
 
                 let remaining = length.saturating_sub(progress);
                 let eta_secs = if speed > 0.0 {
