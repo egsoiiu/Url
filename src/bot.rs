@@ -291,10 +291,16 @@ let ext = original_name
 
 // Compose final filename: use custom_name if given, else original_name
 let name = if let Some(custom) = custom_name {
-    format!("{}.{}", custom, ext)
+    // Case-insensitive check if custom ends with correct extension
+    if custom.to_lowercase().ends_with(&format!(".{}", ext.to_lowercase())) {
+        custom
+    } else {
+        format!("{}.{}", custom, ext)
+    }
 } else {
     original_name
 };
+
 
 // Percent decode filename
 let name = percent_encoding::percent_decode_str(&name)
