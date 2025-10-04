@@ -156,22 +156,26 @@ async fn handle_message(&self, msg: Message) -> Result<()> {
 /// It will reply with a welcome message.
 async fn handle_start(&self, msg: Message) -> Result<()> {
     msg.reply(InputMessage::html(
-    "📁 <b>Hi! Need a file uploaded? Just send the link!</b>\n\
+    "✨⚡💫 <b>𝑾𝒆𝒍𝒄𝒐𝒎𝒆 𝒕𝒐 𝒕𝒉𝒆 𝑬𝒙𝒄𝒍𝒖𝒔𝒊𝒗𝒆 𝑭𝒊𝒍𝒆 𝑼𝒑𝒍𝒐𝒂𝒅𝒆𝒓</b> 💫⚡✨\n\
 \n\
-<blockquote>\n\
-Send the file URL\n\
+📁 <b>ᴄᴏᴘʏ ᴀɴᴅ ᴘᴀsᴛᴇ ʏᴏᴜʀ ᴜʀʟ ᴛᴏ ɢᴇᴛ sᴛᴀʀᴛᴇᴅ!</b>\n\
 \n\
-Easily upload it in seconds\n\
+🔸 <b>𝑪𝒖𝒔𝒕𝒐𝒎 𝒇𝒊𝒍𝒆 𝒏𝒂𝒎𝒊𝒏𝒈:</b>\n\
+<code>URL | custom_name_without_extension</code>\n\
 \n\
-Works smoothly with large files\n\
-</blockquote>\n\
+🔸 <i>ᴛʜᴇ ꜰɪʟᴇ ᴇxᴛᴇɴsɪᴏɴ ᴡɪʟʟ ʙᴇ ᴅᴇᴛᴇᴄᴛᴇᴅ ᴀɴᴅ ᴀᴘᴘᴇɴᴅᴇᴅ ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ.</i>\n\
 \n\
-🌟 <b>Features:</b>\n\
-• Free & fast\n\
-• Uploads files up to 2GB\n\
-• Redirect-friendly"
+🌟 <b>𝑭𝒆𝒂𝒕𝒖𝒓𝒆𝒔:</b>\n\
+⚡ <b>ᴄʀᴀᴢʏ ғᴀsᴛ & ꜰʀᴇᴇ</b> — ʏᴏᴜʀ ꜰɪʟᴇs ᴜᴘʟᴏᴀᴅᴇᴅ ɪɴ ᴀ ꜰʟᴀsʜ\n\
+💎 <b>ᴏᴘᴇɴ sᴏᴜʀᴄᴇ ᴛʀᴜsᴛᴇᴅ</b> — ᴛʀᴀɴsᴘᴀʀᴇɴᴛ ᴀɴᴅ ɪɴ ᴏᴘᴇɴ ᴄᴏᴅᴇ\n\
+🚀 <b>ᴜᴘ ᴛᴏ 2ɢʙ</b> — ʙɪɢ ᴍᴏᴠᴇs ᴡɪᴛʜ ᴇᴀsᴇ\n\
+🔄 <b>ʀᴇᴅɪʀᴇᴄᴛ ꜰʀɪᴇɴᴅʟʏ</b> — sᴍᴏᴏᴛʜ ᴜʀʟ ʜᴀɴᴅʟɪɴɢ\n\
+\n\
+✨ <b>ᴄᴏᴘʏ ᴀɴᴅ ᴘᴀsᴛᴇ ʏᴏᴜʀ ᴜʀʟ ᴛᴏ ɢᴇᴛ sᴛᴀʀᴛᴇᴅ!</b>\n\
+📤 ᴊᴜsᴛ sᴇɴᴅ ʏᴏᴜʀ ꜰɪʟᴇ ʟɪɴᴋ ɴᴏᴡ!"
 ))
 .await?;
+
 
     Ok(())
 }
