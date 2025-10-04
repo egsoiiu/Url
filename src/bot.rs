@@ -6,7 +6,7 @@ use dashmap::{DashMap, DashSet};
 use futures::TryStreamExt;
 use grammers_client::{
     button, reply_markup,
-    types::{CallbackQuery, Chat, Message, User, Attribute},
+    types::{CallbackQuery, Chat, Message, User},
     Client, InputMessage, Update,
 };
 use log::{error, info, warn};
@@ -38,9 +38,9 @@ impl Bot {
             client,
             me,
             http: reqwest::Client::builder()
-                .connect_timeout(Duration::from_secs(10))
-                .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36")
-                .build()?,
+            .connect_timeout(Duration::from_secs(10))
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36")
+            .build()?,
             locks: Arc::new(DashSet::new()),
             started_by: Arc::new(DashMap::new()),
             triggers: Arc::new(DashMap::new()),
@@ -134,28 +134,20 @@ impl Bot {
         Ok(())
     }
 
-    /// Handle the /start command with buttons.
+    /// Handle the /start command.
+    /// This command is sent when the user starts a conversation with the bot.
+    /// It will reply with a welcome message.
     async fn handle_start(&self, msg: Message) -> Result<()> {
-        let keyboard = reply_markup::inline(vec![
-            vec![
-                button::inline("Help", "help"),
-                button::inline("Sample", "sample"),
-            ],
-        ]);
-
-        msg.reply(
-            InputMessage::html(
-                "📁 <b>Hi! Need a file uploaded? Just send the link!</b>\n\
-                In groups, use <code>/upload &lt;url&gt;</code>\n\
-                \n\
-                🌟 <b>Features:</b>\n\
-                \u{2022} Free & fast\n\
-                \u{2022} <a href=\"https://github.com/altfoxie/url-uploader\">Open source</a>\n\
-                \u{2022} Uploads files up to 2GB\n\
-                \u{2022} Redirect-friendly",
-            )
-            .reply_markup(&keyboard),
-        )
+        msg.reply(InputMessage::html(
+            "📁 <b>Hi! Need a file uploaded? Just send the link!</b>\n\
+            In groups, use <code>/upload &lt;url&gt;</code>\n\
+            \n\
+            🌟 <b>Features:</b>\n\
+            \u{2022} Free & fast\n\
+            \u{2022} <a href=\"https://github.com/altfoxie/url-uploader\">Open source</a>\n\
+            \u{2022} Uploads files up to 2GB\n\
+            \u{2022} Redirect-friendly",
+        ))
         .await?;
         Ok(())
     }
@@ -401,12 +393,8 @@ impl Bot {
 
     /// Callback query handler.
     async fn handle_callback(&self, query: CallbackQuery) -> Result<()> {
-        let data = query.data();
-        match data {
+        match query.data() {
             b"cancel" => self.handle_cancel(query).await,
-            b"help" => self.handle_help_callback(query).await,
-            b"sample" => self.handle_sample_callback(query).await,
-            b"start" => self.handle_start_callback(query).await,
             _ => Ok(()),
         }
     }
@@ -440,130 +428,14 @@ impl Bot {
             drop(trigger);
             self.started_by.remove(&chat_id);
 
-            let message = query.load_message().await?;
-            message.edit("⛔ Upload cancelled").await?;
+            query
+                .load_message()
+                .await?
+                .edit("⛔ Upload cancelled")
+                .await?;
 
             query.answer().send().await?;
         }
         Ok(())
-    }
-
-    /// Handle help button callback.
-    async fn handle_help_callback(&self, query: CallbackQuery) -> Result<()> {
-        let keyboard = reply_markup::inline(vec![
-            vec![
-                button::inline("Back", "start"),
-                button::inline("Sample", "sample"),
-            ],
-        ]);
-
-        let help_text = "🆘 <b>Help Section</b>\n\n\
-                       📖 <b>How to use:</b>\n\
-                       \u{2022} Send any direct download link in private chat\n\
-                       \u{2022} In groups, use <code>/upload &lt;url&gt;</code>\n\n\
-                       🔗 <b>Supported links:</b>\n\
-                       \u{2022} Direct download links\n\
-                       \u{2022} Redirecting links\n\
-                       \u{2022} Files up to 2GB\n\n\
-                       ⚠️ <b>Note:</b> The bot will download and reupload the file to Telegram";
-
-        let message = query.load_message().await?;
-        message
-            .edit(InputMessage::html(help_text).reply_markup(&keyboard))
-            .await?;
-
-        // Answer the callback query to remove the loading state
-        query.answer().send().await?;
-
-        Ok(())
-    }
-
-    /// Handle sample button callback.
-    async fn handle_sample_callback(&self, query: CallbackQuery) -> Result<()> {
-        let keyboard = reply_markup::inline(vec![
-            vec![
-                button::inline("Back", "start"),
-                button::inline("Help", "help"),
-            ],
-        ]);
-
-        let sample_text = "📝 <b>Sample Links</b>\n\n\
-                         Here are some example links you can try:\n\n\
-                         🔗 <b>Direct download examples:</b>\n\
-                         \u{2022} <code>https://example.com/file.zip</code>\n\
-                         \u{2022} <code>https://download.com/document.pdf</code>\n\n\
-                         🔄 <b>Redirect examples:</b>\n\
-                         \u{2022} <code>https://bit.ly/example-file</code>\n\
-                         \u{2022} <code>https://tinyurl.com/sample-file</code>\n\n\
-                         💡 <b>Try it:</b> Copy any sample link and send it to me!";
-
-        let message = query.load_message().await?;
-        message
-            .edit(InputMessage::html(sample_text).reply_markup(&keyboard))
-            .await?;
-
-        // Answer the callback query to remove the loading state
-        query.answer().send().await?;
-
-        Ok(())
-    }
-
-    /// Handle start button callback.
-    async fn handle_start_callback(&self, query: CallbackQuery) -> Result<()> {
-        let keyboard = reply_markup::inline(vec![
-            vec![
-                button::inline("Help", "help"),
-                button::inline("Sample", "sample"),
-            ],
-        ]);
-
-        let start_text = "📁 <b>Hi! Need a file uploaded? Just send the link!</b>\n\
-                In groups, use <code>/upload &lt;url&gt;</code>\n\
-                \n\
-                🌟 <b>Features:</b>\n\
-                \u{2022} Free & fast\n\
-                \u{2022} <a href=\"https://github.com/altfoxie/url-uploader\">Open source</a>\n\
-                \u{2022} Uploads files up to 2GB\n\
-                \u{2022} Redirect-friendly";
-
-        let message = query.load_message().await?;
-        message
-            .edit(InputMessage::html(start_text).reply_markup(&keyboard))
-            .await?;
-
-        // Answer the callback query to remove the loading state
-        query.answer().send().await?;
-
-        Ok(())
-    }
-}
-
-/// Create a visual progress bar
-fn create_progress_bar(percentage: f64) -> String {
-    const BAR_LENGTH: usize = 10;
-    let filled = (percentage / 100.0 * BAR_LENGTH as f64).round() as usize;
-    let empty = BAR_LENGTH - filled;
-
-    let filled_str = "■".repeat(filled);
-    let empty_str = "□".repeat(empty);
-
-    format!("[ {} ]", filled_str + &empty_str)
-}
-
-/// Format duration in seconds to human readable format
-fn format_duration(seconds: u64) -> String {
-    if seconds == 0 {
-        return "Calculating...".to_string();
-    }
-
-    let minutes = seconds / 60;
-    let hours = minutes / 60;
-
-    if hours > 0 {
-        format!("{} hr {} min", hours, minutes % 60)
-    } else if minutes > 0 {
-        format!("{} min {} sec", minutes, seconds % 60)
-    } else {
-        format!("{} sec", seconds)
     }
 }
