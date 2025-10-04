@@ -156,16 +156,23 @@ async fn handle_message(&self, msg: Message) -> Result<()> {
 /// It will reply with a welcome message.
 async fn handle_start(&self, msg: Message) -> Result<()> {
     msg.reply(InputMessage::html(
-        "📁 <b>Hi! Need a file uploaded? Just send the link!</b>\n\
-        In groups, use <code>/upload &lt;url&gt;</code>\n\
-        \n\
-        🌟 <b>Features:</b>\n\
-        \u{2022} Free & fast\n\
-        \u{2022} <a href=\"https://github.com/altfoxie/url-uploader\">Open source</a>\n\
-        \u{2022} Uploads files up to 2GB\n\
-        \u{2022} Redirect-friendly",
-    ))
-    .await?;
+    "📁 <b>Hi! Need a file uploaded? Just send the link!</b>\n\
+\n\
+<blockquote>\n\
+Send the file URL\n\
+\n\
+Easily upload it in seconds\n\
+\n\
+Works smoothly with large files\n\
+</blockquote>\n\
+\n\
+🌟 <b>Features:</b>\n\
+• Free & fast\n\
+• Uploads files up to 2GB\n\
+• Redirect-friendly"
+))
+.await?;
+
     Ok(())
 }
 
