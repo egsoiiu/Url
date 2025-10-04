@@ -287,95 +287,120 @@ impl Bot {
         };
 
         // Reply markup buttons
-        let reply_markup = reply_markup::inline(vec![vec![button::inline(
+        let reply_markup = Arc::new(reply_markup::inline(vec![vec![button::inline(
             "⛔ Cancel",
             "cancel",
-        )]]);
+        )]]));
 
-        // Send status message
-        let status = Arc::new(Mutex::new(
-            msg.reply(
-                InputMessage::html(format!("🚀 Starting upload of <code>{}</code>...", name))
-                    .reply_markup(&reply_markup),
-            )
-            .await?,
-        ));
+        // Send initial status message
+let status = Arc::new(Mutex::new(
+    msg.reply(
+        InputMessage::html(format!("🚀 Starting upload of <code>{}</code>...", name))
+            .reply_markup(reply_markup.clone().as_ref()),
+    )
+    .await?,
+));
 
-        let start_time = std::time::Instant::now();
-        
-        // Clone variables before moving into closure
-        let name_clone = name.clone();
-        let status_clone = status.clone();
-        let reply_markup_clone = reply_markup.clone();
+let start_time = Arc::new(chrono::Utc::now());
 
-        let mut stream = stream
-            .into_async_read()
-            .compat()
-            // Report progress every 1 second for better updates
-            .report_progress(Duration::from_secs(1), move |progress| {
-                let status = status_clone.clone();
-                let name = name_clone.clone();
-                let reply_markup = reply_markup_clone.clone();
-                
-                let elapsed = start_time.elapsed().as_secs_f64();
-                let speed = if elapsed > 0.0 {
-                    (progress as f64 / elapsed) as u64
+let mut stream = stream
+    .into_async_read()
+    .compat()
+    // Report progress every 3 seconds
+    .report_progress(Duration::from_secs(3), {
+        let status = status.clone();
+        let name = name.clone();
+        let reply_markup = reply_markup.clone();
+        let start_time = start_time.clone();
+
+        move |progress| {
+            let status = status.clone();
+            let name = name.clone();
+            let reply_markup = reply_markup.clone();
+            let start_time = start_time.clone();
+
+            tokio::spawn(async move {
+                let now = chrono::Utc::now();
+                let elapsed_secs = (now - *start_time).num_seconds().max(1) as f64;
+
+                let percent = progress as f64 / length as f64;
+                let progress_bar = create_progress_bar(percent, 10);
+                let uploaded = bytesize::to_string(progress as u64, true);
+                let total = bytesize::to_string(length as u64, true);
+                let speed = progress as f64 / elapsed_secs;
+                let speed_str = format!("{}/s", bytesize::to_string(speed as u64, true));
+
+                let remaining = length.saturating_sub(progress);
+                let eta_secs = if speed > 0.0 {
+                    (remaining as f64 / speed).round() as u64
                 } else {
                     0
                 };
+                let eta_str = format_eta(eta_secs);
 
-                let time_remaining = if speed > 0 {
-                    (length as u64 - progress as u64) / speed
-                } else {
-                    0
-                };
+                let msg_text = format!(
+                    "⏳ <b>Uploading...</b>\n\n\
+                    [ {} ] {:.2}%\n\n\
+                    ➩ {} of {}\n\
+                    ➩ Speed : {}\n\
+                    ➩ Time Left : {}",
+                    progress_bar,
+                    percent * 100.0,
+                    uploaded,
+                    total,
+                    speed_str,
+                    eta_str,
+                );
 
-                let progress_percent = progress as f64 / length as f64 * 100.0;
-                let progress_bar = create_progress_bar(progress_percent);
-
-                tokio::spawn(async move {
-                    if let Ok(mut status_guard) = status.try_lock() {
-                        let _ = status_guard
-                            .edit(
-                                InputMessage::html(format!(
-                                    "📤 <b>Uploading...</b>\n\n{}\n\n\
-                                    <b>{:.2}%</b>\n\n\
-                                    ➩ {} of {}\n\
-                                    ➩ Speed: {}/s\n\
-                                    ➩ Time Left: {}",
-                                    progress_bar,
-                                    progress_percent,
-                                    bytesize::to_string(progress as u64, true),
-                                    bytesize::to_string(length as u64, true),
-                                    bytesize::to_string(speed, true),
-                                    format_duration(time_remaining)
-                                ))
-                                .reply_markup(&reply_markup),
-                            )
-                            .await;
-                    }
-                });
+                status
+                    .lock()
+                    .await
+                    .edit(InputMessage::html(msg_text).reply_markup(reply_markup.as_ref()))
+                    .await
+                    .ok();
             });
+        }
+    });
+
+
+
+
+fn create_progress_bar(percent: f64, width: usize) -> String {
+    let filled = (percent * width as f64).round() as usize;
+    let empty = width.saturating_sub(filled);
+    format!("{}{}", "■".repeat(filled), "□".repeat(empty))
+}
+
+fn format_eta(seconds: u64) -> String {
+    let mins = seconds / 60;
+    let secs = seconds % 60;
+    format!("{:02} min {:02} sec", mins, secs)
+}
+
+            
+            
+            
+            
 
         // Upload the file
-        let upload_start_time = chrono::Utc::now();
+        let start_time = chrono::Utc::now();
         let file = self
             .client
             .upload_stream(&mut stream, length, name.clone())
             .await?;
 
         // Calculate upload time
-        let elapsed = chrono::Utc::now() - upload_start_time;
+        let elapsed = chrono::Utc::now() - start_time;
         info!("Uploaded file {} ({} bytes) in {}", name, length, elapsed);
 
         // Send file
         let mut input_msg = InputMessage::html(format!(
-            "✅ <b>Upload completed in {:.2} seconds</b>",
+            "Uploaded in <b>{:.2} secs</b>",
             elapsed.num_milliseconds() as f64 / 1000.0
         ));
         input_msg = input_msg.document(file);
         if is_video {
-            input_msg = input_msg.attribute(Attribute::Video {
+            input_msg = input_msg.attribute(grammers_client::types::Attribute::Video {
                 supports_streaming: false,
                 duration: Duration::ZERO,
                 w: 0,
