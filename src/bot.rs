@@ -475,18 +475,21 @@ fn format_eta(seconds: u64) -> String {
         let mut input_msg = InputMessage::html(format!(
             "Uploaded in <b>{:.2} secs</b>",
             elapsed.num_milliseconds() as f64 / 1000.0
-        ));
-        input_msg = input_msg.document(file);
-        if is_video {
-            input_msg = input_msg.attribute(grammers_client::types::Attribute::Video {
-                supports_streaming: false,
-                duration: Duration::ZERO,
-                w: 0,
-                h: 0,
-                round_message: false,
-            });
-        }
-        msg.reply(input_msg).await?;
+        ));input_msg = input_msg.document(file); // Always upload as document
+
+if is_video {
+    // Still add the video attribute, even though it's uploaded as a document
+    input_msg = input_msg.attribute(grammers_client::types::Attribute::Video {
+        supports_streaming: false, // or true if applicable
+        duration: Duration::ZERO,  // You can replace with actual duration
+        w: 0,                      // Width if known
+        h: 0,                      // Height if known
+        round_message: false,
+    });
+}
+
+msg.reply(input_msg).await?;
+
 
         // Delete status message
         status.lock().await.delete().await?;
