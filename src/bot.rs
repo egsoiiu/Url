@@ -379,19 +379,26 @@ let elapsed_secs = (now - *start_time).num_seconds().max(1) as f64;
 let percent = progress as f64 / length as f64;
 let progress_bar = create_progress_bar(percent, 10);
 
-// Helper closure to convert bytes to binary units with "MB"/"GB" labels and 1 decimal
+// Helper closure to convert bytes to binary units with "MB"/"GB" labels
 let format_bytes = |bytes: u64| -> String {
-    let formatted = bytesize::to_string(bytes, true)
+    bytesize::to_string(bytes, true)
         .replace("MiB", "MB")
-        .replace("GiB", "GB");
-    
-    // Truncate to 1 decimal (e.g., "104.38 MB" -> "104.3 MB")
-    if let Some((num, unit)) = formatted.trim().rsplit_once(' ') {
-        if let Ok(value) = num.parse::<f64>() {
-            return format!("{:.1} {}", value, unit);
+        .replace("GiB", "GB")
+};
+
+// Inline function to format ETA as "1 min 45 sec" or "45 sec"
+let format_eta = |seconds: u64| -> String {
+    if seconds >= 60 {
+        let minutes = seconds / 60;
+        let secs = seconds % 60;
+        if secs > 0 {
+            format!("{} min {} sec", minutes, secs)
+        } else {
+            format!("{} min", minutes)
         }
+    } else {
+        format!("{} sec", seconds)
     }
-    formatted
 };
 
 let uploaded = format_bytes(progress as u64);
@@ -421,6 +428,7 @@ let msg_text = format!(
     speed_str,
     eta_str,
 );
+
 
 status
     .lock()
