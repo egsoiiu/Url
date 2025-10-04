@@ -354,10 +354,10 @@ if length == 0 {
 
     // Your existing upload logic continues here...
 
-   let emojis = ["💗", "⚡", "💫", "❤️", "🦋", "❣️"];
+let emojis = ["💗", "⚡", "💫", "❤️", "🦋", "❣️"];
 let random_emoji = emojis.choose(&mut rand::thread_rng()).unwrap();
 
-// Send initial status message
+// Send status message (replies to msg)
 let status = Arc::new(Mutex::new(
     msg.reply(
         InputMessage::html(format!("🚀 Starting upload of <code>{}</code>...", name))
@@ -366,11 +366,15 @@ let status = Arc::new(Mutex::new(
     .await?,
 ));
 
-// Send random emoji message
+// Send emoji as standalone message
 let emoji_msg = Arc::new(Mutex::new(
-    msg.reply(InputMessage::text(random_emoji)).await?,
+    msg.chat().send(InputMessage::text(random_emoji)).await?,
 ));
 
+// Store the emoji message for possible deletion later
+self.emoji_messages.insert(msg.chat().id(), emoji_msg.clone());
+
+// ... upload logic happens ...
 
 let start_time = Arc::new(chrono::Utc::now());
 
@@ -497,9 +501,10 @@ input_msg = input_msg.document(file); // Always upload as document
 
 msg.reply(input_msg).await?;
 
-// Delete both messages
+// Delete both messages// Delete messages after upload
 status.lock().await.delete().await?;
 emoji_msg.lock().await.delete().await?;
+self.emoji_messages.remove(&msg.chat().id());
         Ok(())
     }
 
