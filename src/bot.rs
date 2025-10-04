@@ -122,11 +122,28 @@ async fn handle_message(&self, msg: Message) -> Result<()> {
     }
 
     if let Chat::User(_) = msg.chat() {
-        // If the message is not a command, try to parse it as a URL
-        if let Ok(url) = Url::parse(msg.text()) {
-            return self.handle_url(msg, url, None).await;
+    // Handle URL with custom filename syntax (url | filename)
+    let text = msg.text().trim();
+    
+    // Check if the message contains pipe syntax for custom filename
+    if let Some(pipe_pos) = text.find('|') {
+        let (url_part, name_part) = text.split_at(pipe_pos);
+        let url_str = url_part.trim();
+        let custom_name = name_part[1..].trim();
+        
+        // Only proceed if we have a non-empty URL part
+        if !url_str.is_empty() && !custom_name.is_empty() {
+            if let Ok(url) = Url::parse(url_str) {
+                return self.handle_url(msg, url, Some(custom_name.to_string())).await;
+            }
         }
     }
+    
+    // Fallback: try parsing the entire message as a plain URL (without custom filename)
+    if let Ok(url) = Url::parse(text) {
+        return self.handle_url(msg, url, None).await;
+    }
+}
 
     Ok(())
 }
