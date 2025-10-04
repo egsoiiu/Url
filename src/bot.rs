@@ -158,13 +158,13 @@ async fn handle_start(&self, msg: Message) -> Result<()> {
     msg.reply(InputMessage::html(
     " 𝑾𝒆𝒍𝒄𝒐𝒎𝒆 𝒕𝒐 𝒕𝒉𝒆 𝑬𝒙𝒄𝒍𝒖𝒔𝒊𝒗𝒆 𝑭𝒊𝒍𝒆 𝑼𝒑𝒍𝒐𝒂𝒅𝒆𝒓\n\
 \n\
-<b>𝐶𝑢𝑠𝑡𝑜𝑚 𝑓𝑖𝑙𝑒 𝑛𝑎𝑚𝑖𝑛𝑔</b>\n\
-       ➠ <code>URL | File_Name</code>\n\
+𝐶𝑢𝑠𝑡𝑜𝑚 𝑓𝑖𝑙𝑒 𝑛𝑎𝑚𝑖𝑛𝑔\n\
+       ㅤㅤ➠ URL | File_Name\n\
 \n\
 𝐹𝑒𝑎𝑡𝑢𝑟𝑒𝑠 :\n\
-     ➠ ᴄʀᴀᴢʏ ғᴀsᴛ & ꜰʀᴇᴇ\n\
-     ➠ ᴜᴘ ᴛᴏ 2ɢʙ\n\
-     ➠ ᴄᴜsᴛᴏᴍ ꜰɪʟᴇ ɴᴀᴍᴇ ᴡɪᴛʜ ᴀᴜᴛᴏ ᴇxᴛᴇɴsɪᴏɴ\n\
+     ㅤㅤ➠ ᴄʀᴀᴢʏ ғᴀsᴛ & ꜰʀᴇᴇ\n\
+     ㅤㅤ➠ ᴜᴘ ᴛᴏ 2ɢʙ\n\
+     ㅤㅤ➠ ᴄᴜsᴛᴏᴍ ꜰɪʟᴇ ɴᴀᴍᴇ ᴡɪᴛʜ ᴀᴜᴛᴏ ᴇxᴛᴇɴsɪᴏɴ\n\
 \n\
 ✨ <b>ᴄᴏᴘʏ ᴀɴᴅ ᴘᴀsᴛᴇ ʏᴏᴜʀ ᴜʀʟ ᴛᴏ ɢᴇᴛ sᴛᴀʀᴛᴇᴅ!</b>"
 ))
@@ -339,7 +339,7 @@ if length == 0 {
 
     // Reply markup buttons
     let reply_markup = Arc::new(reply_markup::inline(vec![vec![button::inline(
-        "⛔ Cancel",
+        "Cancel ✗",
         "cancel",
     )]]));
 
@@ -421,7 +421,7 @@ let mut stream = stream
 fn create_progress_bar(percent: f64, width: usize) -> String {
     let filled = (percent * width as f64).floor() as usize;
     let empty = width.saturating_sub(filled);
-    format!("{}{}", "■".repeat(filled), "□".repeat(empty))
+    format!("{}{}", "▣".repeat(filled), "□".repeat(empty))
 }
 
 fn format_eta(seconds: u64) -> String {
@@ -509,7 +509,7 @@ fn format_eta(seconds: u64) -> String {
             query
                 .load_message()
                 .await?
-                .edit("⛔ Upload cancelled")
+                .edit("Upload cancelled ✗")
                 .await?;
 
             query.answer().send().await?;
