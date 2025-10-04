@@ -237,67 +237,80 @@ async fn handle_url(&self, msg: Message, url: Url, custom_name: Option<String>) 
     let response = self.http.get(url.clone()).send().await?;
 
     // Get the file length
-    let length = response.content_length().unwrap_or_default() as usize;
+let length = response.content_length().unwrap_or_default() as usize;
 
-    // Extract original filename from content-disposition or URL path
-    let original_name = match response
-        .headers()
-        .get("content-disposition")
-        .and_then(|value| {
-            value.to_str().ok().and_then(|value| {
+// Extract filename from content-disposition or URL path, with extension guessing if missing
+let original_name = match response
+    .headers()
+    .get("content-disposition")
+    .and_then(|value| {
+        value
+            .to_str()
+            .ok()
+            .and_then(|value| {
                 value
                     .split(';')
                     .map(|v| v.trim())
                     .find(|v| v.starts_with("filename="))
             })
-            .map(|value| value.trim_start_matches("filename=").trim_matches('"'))
-        }) {
-        Some(name) => name.to_string(),
-        None => url
-            .path_segments()
-            .and_then(|segments| segments.last())
-            .unwrap_or("file.bin")
-            .to_string(),
-    };
-
-    // Extract extension from original name, fallback to "bin"
-    let ext = original_name
-        .rsplit_once('.')
-        .map(|(_, ext)| ext)
-        .unwrap_or("bin");
-
-    // Compose final name using custom_name if provided
-    let name = if let Some(custom) = custom_name {
-        format!("{}.{}", custom, ext)
-    } else {
-        original_name
-    };
-
-    // Decode percent encoding from name
-    let name = percent_encoding::percent_decode_str(&name)
-        .decode_utf8()?
-        .to_string();
-
-    // Detect if file is a video (for info)
-    let is_video = response
-        .headers()
-        .get("content-type")
-        .map(|value| {
-            value
-                .to_str()
-                .ok()
-                .map(|value| value.starts_with("video/mp4"))
-                .unwrap_or_default()
+            .map(|filename| filename.trim_start_matches("filename=").trim_matches('"'))
+    }) {
+    Some(name) => name.to_string(),
+    None => response
+        .url()
+        .path_segments()
+        .and_then(|segments| segments.last())
+        .and_then(|name| {
+            if name.contains('.') {
+                Some(name.to_string())
+            } else {
+                // guess extension from content-type
+                response
+                    .headers()
+                    .get("content-type")
+                    .and_then(|value| value.to_str().ok())
+                    .and_then(mime_guess::get_mime_extensions_str)
+                    .and_then(|exts| exts.first())
+                    .map(|ext| format!("{}.{}", name, ext))
+            }
         })
-        .unwrap_or_default()
-        || name.to_lowercase().ends_with(".mp4");
-    info!("File {} ({} bytes, video: {})", name, length, is_video);
+        .unwrap_or_else(|| "file.bin".to_string()),
+};
 
-    // File is empty
-    if length == 0 {
-        msg.reply("⚠️ File is empty").await?;
-        return Ok(());
-    }
+// Extract extension from original_name, fallback to "bin"
+let ext = original_name
+    .rsplit_once('.')
+    .map(|(_, ext)| ext)
+    .unwrap_or("bin");
+
+// Compose final filename: use custom_name if given, else original_name
+let name = if let Some(custom) = custom_name {
+    format!("{}.{}", custom, ext)
+} else {
+    original_name
+};
+
+// Percent decode filename
+let name = percent_encoding::percent_decode_str(&name)
+    .decode_utf8()?
+    .to_string();
+
+// Detect if the file is video/mp4 by content-type or filename extension
+let is_video = response
+    .headers()
+    .get("content-type")
+    .and_then(|value| value.to_str().ok())
+    .map(|ctype| ctype.starts_with("video/mp4"))
+    .unwrap_or(false)
+    || name.to_lowercase().ends_with(".mp4");
+
+info!("File {} ({} bytes, video: {})", name, length, is_video);
+
+// Check for empty file
+if length == 0 {
+    msg.reply("⚠️ File is empty").await?;
+    return Ok(());
+}
 
     // File is too large
     if length > 2 * 1024 * 1024 * 1024 {
