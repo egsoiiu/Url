@@ -472,10 +472,8 @@ fn format_eta(seconds: u64) -> String {
         info!("Uploaded file {} ({} bytes) in {}", name, length, elapsed);
 
         // Send file
-        let mut input_msg = InputMessage::html(format!(
-            "Uploaded in <b>{:.2} secs</b>",
-            elapsed.num_milliseconds() as f64 / 1000.0
-        ));input_msg = input_msg.document(file); // Always upload as document
+let mut input_msg = InputMessage::html(name.clone());
+input_msg = input_msg.document(file); // Always upload as document
 
 
 
