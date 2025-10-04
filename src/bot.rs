@@ -79,218 +79,226 @@ impl Bot {
             _ => Ok(()),
         }
     }
+/// Message handler.
+///
+/// Ensures the message is from a user or a group, and then parses the command.
+/// If the command is not recognized, it will try to parse the message as a URL.
+async fn handle_message(&self, msg: Message) -> Result<()> {
+    // Ensure the message chat is a user or a group
+    match msg.chat() {
+        Chat::User(_) | Chat::Group(_) => {}
+        _ => return Ok(()),
+    };
 
-    /// Message handler.
-    ///
-    /// Ensures the message is from a user or a group, and then parses the command.
-    /// If the command is not recognized, it will try to parse the message as a URL.
-    async fn handle_message(&self, msg: Message) -> Result<()> {
-        // Ensure the message chat is a user or a group
-        match msg.chat() {
-            Chat::User(_) | Chat::Group(_) => {}
-            _ => return Ok(()),
-        };
-
-        // Parse the command
-        let command = parse_command(msg.text());
-        if let Some(command) = command {
-            // Ensure the command is for this bot
-            if let Some(via) = &command.via {
-                if via.to_lowercase() != self.me.username().unwrap_or_default().to_lowercase() {
-                    warn!("Ignoring command for unknown bot: {}", via);
-                    return Ok(());
-                }
-            }
-
-            // There is a chance that there are multiple bots listening
-            // to /start commands in a group, so we handle commands
-            // only if they are sent explicitly to this bot.
-            if let Chat::Group(_) = msg.chat() {
-                if command.name == "start" && command.via.is_none() {
-                    return Ok(());
-                }
-            }
-
-            // Handle the command
-            info!("Received command: {:?}", command);
-            match command.name.as_str() {
-                "start" => {
-                    return self.handle_start(msg).await;
-                }
-                "upload" => {
-                    return self.handle_upload(msg, command).await;
-                }
-                _ => {}
+    // Parse the command
+    let command = parse_command(msg.text());
+    if let Some(command) = command {
+        // Ensure the command is for this bot
+        if let Some(via) = &command.via {
+            if via.to_lowercase() != self.me.username().unwrap_or_default().to_lowercase() {
+                warn!("Ignoring command for unknown bot: {}", via);
+                return Ok(());
             }
         }
 
-        if let Chat::User(_) = msg.chat() {
-            // If the message is not a command, try to parse it as a URL
-            if let Ok(url) = Url::parse(msg.text()) {
-                return self.handle_url(msg, url).await;
+        // Handle commands only if sent explicitly to this bot in group
+        if let Chat::Group(_) = msg.chat() {
+            if command.name == "start" && command.via.is_none() {
+                return Ok(());
             }
         }
 
-        Ok(())
-    }
-
-    /// Handle the /start command.
-    /// This command is sent when the user starts a conversation with the bot.
-    /// It will reply with a welcome message.
-    async fn handle_start(&self, msg: Message) -> Result<()> {
-        msg.reply(InputMessage::html(
-            "📁 <b>Hi! Need a file uploaded? Just send the link!</b>\n\
-            In groups, use <code>/upload &lt;url&gt;</code>\n\
-            \n\
-            🌟 <b>Features:</b>\n\
-            \u{2022} Free & fast\n\
-            \u{2022} <a href=\"https://github.com/altfoxie/url-uploader\">Open source</a>\n\
-            \u{2022} Uploads files up to 2GB\n\
-            \u{2022} Redirect-friendly",
-        ))
-        .await?;
-        Ok(())
-    }
-
-    /// Handle the /upload command.
-    /// This command should be used in groups to upload a file.
-    async fn handle_upload(&self, msg: Message, cmd: Command) -> Result<()> {
-        // If the argument is not specified, reply with an error
-        let url = match cmd.arg {
-            Some(url) => url,
-            None => {
-                msg.reply("Please specify a URL").await?;
-                return Ok(());
+        // Handle the command
+        info!("Received command: {:?}", command);
+        match command.name.as_str() {
+            "start" => {
+                return self.handle_start(msg).await;
             }
-        };
-
-        // Parse the URL
-        let url = match Url::parse(&url) {
-            Ok(url) => url,
-            Err(err) => {
-                msg.reply(format!("Invalid URL: {}", err)).await?;
-                return Ok(());
+            "upload" => {
+                return self.handle_upload(msg, command).await;
             }
-        };
-
-        self.handle_url(msg, url).await
+            _ => {}
+        }
     }
 
-    /// Handle a URL.
-    /// This function will download the file and upload it to Telegram.
-    async fn handle_url(&self, msg: Message, url: Url) -> Result<()> {
-        let sender = match msg.sender() {
-            Some(sender) => sender,
-            None => return Ok(()),
-        };
+    if let Chat::User(_) = msg.chat() {
+        // If the message is not a command, try to parse it as a URL
+        if let Ok(url) = Url::parse(msg.text()) {
+            return self.handle_url(msg, url, None).await;
+        }
+    }
 
-        // Lock the chat to prevent multiple uploads at the same time
-        info!("Locking chat {}", msg.chat().id());
-        let _lock = self.locks.insert(msg.chat().id());
-        if !_lock {
-            msg.reply("✋ Whoa, slow down! There's already an active upload in this chat.")
-                .await?;
+    Ok(())
+}
+
+/// Handle the /start command.
+/// This command is sent when the user starts a conversation with the bot.
+/// It will reply with a welcome message.
+async fn handle_start(&self, msg: Message) -> Result<()> {
+    msg.reply(InputMessage::html(
+        "📁 <b>Hi! Need a file uploaded? Just send the link!</b>\n\
+        In groups, use <code>/upload &lt;url&gt;</code>\n\
+        \n\
+        🌟 <b>Features:</b>\n\
+        \u{2022} Free & fast\n\
+        \u{2022} <a href=\"https://github.com/altfoxie/url-uploader\">Open source</a>\n\
+        \u{2022} Uploads files up to 2GB\n\
+        \u{2022} Redirect-friendly",
+    ))
+    .await?;
+    Ok(())
+}
+
+/// Handle the /upload command.
+/// This command should be used in groups to upload a file.
+/// Supports custom filename via '|' separator.
+async fn handle_upload(&self, msg: Message, cmd: Command) -> Result<()> {
+    // If the argument is not specified, reply with an error
+    let input = match cmd.arg {
+        Some(ref arg) => arg.trim(),
+        None => {
+            msg.reply("Please specify a URL").await?;
             return Ok(());
         }
-        self.started_by.insert(msg.chat().id(), sender.id());
+    };
 
-        // Deferred unlock
-        defer! {
-            info!("Unlocking chat {}", msg.chat().id());
-            self.locks.remove(&msg.chat().id());
-            self.started_by.remove(&msg.chat().id());
-        };
+    // Split by pipe '|' to separate URL and custom filename
+    let parts: Vec<&str> = input.splitn(2, '|').collect();
 
-        info!("Downloading file from {}", url);
-        let response = self.http.get(url).send().await?;
+    let url_str = parts[0].trim();
+    let custom_name = parts.get(1).map(|s| s.trim().to_string());
 
-        // Get the file name and size
-        let length = response.content_length().unwrap_or_default() as usize;
-        let name = match response
-            .headers()
-            .get("content-disposition")
-            .and_then(|value| {
+    // Parse the URL
+    let url = match Url::parse(url_str) {
+        Ok(url) => url,
+        Err(err) => {
+            msg.reply(format!("Invalid URL: {}", err)).await?;
+            return Ok(());
+        }
+    };
+
+    // Pass URL and custom name to handle_url
+    self.handle_url(msg, url, custom_name).await
+}
+
+/// Handle a URL.
+/// This function will download the file and upload it to Telegram.
+/// Supports optional custom file name (without extension).
+async fn handle_url(&self, msg: Message, url: Url, custom_name: Option<String>) -> Result<()> {
+    let sender = match msg.sender() {
+        Some(sender) => sender,
+        None => return Ok(()),
+    };
+
+    // Lock the chat to prevent multiple uploads at the same time
+    info!("Locking chat {}", msg.chat().id());
+    let _lock = self.locks.insert(msg.chat().id());
+    if !_lock {
+        msg.reply("✋ Whoa, slow down! There's already an active upload in this chat.")
+            .await?;
+        return Ok(());
+    }
+    self.started_by.insert(msg.chat().id(), sender.id());
+
+    // Deferred unlock
+    defer! {
+        info!("Unlocking chat {}", msg.chat().id());
+        self.locks.remove(&msg.chat().id());
+        self.started_by.remove(&msg.chat().id());
+    };
+
+    info!("Downloading file from {}", url);
+    let response = self.http.get(url.clone()).send().await?;
+
+    // Get the file length
+    let length = response.content_length().unwrap_or_default() as usize;
+
+    // Extract original filename from content-disposition or URL path
+    let original_name = match response
+        .headers()
+        .get("content-disposition")
+        .and_then(|value| {
+            value.to_str().ok().and_then(|value| {
                 value
-                    .to_str()
-                    .ok()
-                    .and_then(|value| {
-                        value
-                            .split(';')
-                            .map(|value| value.trim())
-                            .find(|value| value.starts_with("filename="))
-                    })
-                    .map(|value| value.trim_start_matches("filename="))
-                    .map(|value| value.trim_matches('"'))
-            }) {
-            Some(name) => name.to_string(),
-            None => response
-                .url()
-                .path_segments()
-                .and_then(|segments| segments.last())
-                .and_then(|name| {
-                    if name.contains('.') {
-                        Some(name.to_string())
-                    } else {
-                        // guess the extension from the content type
-                        response
-                            .headers()
-                            .get("content-type")
-                            .and_then(|value| value.to_str().ok())
-                            .and_then(mime_guess::get_mime_extensions_str)
-                            .and_then(|ext| ext.first())
-                            .map(|ext| format!("{}.{}", name, ext))
-                    }
-                })
-                .unwrap_or("file.bin".to_string())
-                .to_string(),
-        };
-        let name = percent_encoding::percent_decode_str(&name)
-            .decode_utf8()?
-            .to_string();
-        let is_video = response
-            .headers()
-            .get("content-type")
-            .map(|value| {
-                value
-                    .to_str()
-                    .ok()
-                    .map(|value| value.starts_with("video/mp4"))
-                    .unwrap_or_default()
+                    .split(';')
+                    .map(|v| v.trim())
+                    .find(|v| v.starts_with("filename="))
             })
-            .unwrap_or_default()
-            || name.to_lowercase().ends_with(".mp4");
-        info!("File {} ({} bytes, video: {})", name, length, is_video);
+            .map(|value| value.trim_start_matches("filename=").trim_matches('"'))
+        }) {
+        Some(name) => name.to_string(),
+        None => url
+            .path_segments()
+            .and_then(|segments| segments.last())
+            .unwrap_or("file.bin")
+            .to_string(),
+    };
 
-        // File is empty
-        if length == 0 {
-            msg.reply("⚠️ File is empty").await?;
-            return Ok(());
-        }
+    // Extract extension from original name, fallback to "bin"
+    let ext = original_name
+        .rsplit_once('.')
+        .map(|(_, ext)| ext)
+        .unwrap_or("bin");
 
-        // File is too large
-        if length > 2 * 1024 * 1024 * 1024 {
-            msg.reply("⚠️ File is too large").await?;
-            return Ok(());
-        }
+    // Compose final name using custom_name if provided
+    let name = if let Some(custom) = custom_name {
+        format!("{}.{}", custom, ext)
+    } else {
+        original_name
+    };
 
-        // Wrap the response stream in a valved stream
-        let (trigger, stream) = Valved::new(
-            response
-                .bytes_stream()
-                .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err)),
-        );
-        self.triggers.insert(msg.chat().id(), trigger);
+    // Decode percent encoding from name
+    let name = percent_encoding::percent_decode_str(&name)
+        .decode_utf8()?
+        .to_string();
 
-        // Deferred trigger removal
-        defer! {
-            self.triggers.remove(&msg.chat().id());
-        };
+    // Detect if file is a video (for info)
+    let is_video = response
+        .headers()
+        .get("content-type")
+        .map(|value| {
+            value
+                .to_str()
+                .ok()
+                .map(|value| value.starts_with("video/mp4"))
+                .unwrap_or_default()
+        })
+        .unwrap_or_default()
+        || name.to_lowercase().ends_with(".mp4");
+    info!("File {} ({} bytes, video: {})", name, length, is_video);
 
-        // Reply markup buttons
-        let reply_markup = Arc::new(reply_markup::inline(vec![vec![button::inline(
-            "⛔ Cancel",
-            "cancel",
-        )]]));
+    // File is empty
+    if length == 0 {
+        msg.reply("⚠️ File is empty").await?;
+        return Ok(());
+    }
+
+    // File is too large
+    if length > 2 * 1024 * 1024 * 1024 {
+        msg.reply("⚠️ File is too large").await?;
+        return Ok(());
+    }
+
+    // Wrap the response stream in a valved stream
+    let (trigger, stream) = Valved::new(
+        response
+            .bytes_stream()
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err)),
+    );
+    self.triggers.insert(msg.chat().id(), trigger);
+
+    // Deferred trigger removal
+    defer! {
+        self.triggers.remove(&msg.chat().id());
+    };
+
+    // Reply markup buttons
+    let reply_markup = Arc::new(reply_markup::inline(vec![vec![button::inline(
+        "⛔ Cancel",
+        "cancel",
+    )]]));
+
+    // Your existing upload logic continues here...
 
         // Send initial status message
 let status = Arc::new(Mutex::new(
