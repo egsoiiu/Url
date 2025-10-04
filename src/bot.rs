@@ -379,11 +379,26 @@ let elapsed_secs = (now - *start_time).num_seconds().max(1) as f64;
 let percent = progress as f64 / length as f64;
 let progress_bar = create_progress_bar(percent, 10);
 
-let uploaded = bytesize::to_string(progress as u64, false); // MB/GB
-let total = bytesize::to_string(length as u64, false);      // MB/GB
+// Helper closure to convert bytes to binary units with "MB"/"GB" labels and 1 decimal
+let format_bytes = |bytes: u64| -> String {
+    let formatted = bytesize::to_string(bytes, true)
+        .replace("MiB", "MB")
+        .replace("GiB", "GB");
+    
+    // Truncate to 1 decimal (e.g., "104.38 MB" -> "104.3 MB")
+    if let Some((num, unit)) = formatted.trim().rsplit_once(' ') {
+        if let Ok(value) = num.parse::<f64>() {
+            return format!("{:.1} {}", value, unit);
+        }
+    }
+    formatted
+};
 
-let speed = progress as f64 / elapsed_secs; // 👈 ADD THIS LINE
-let speed_str = format!("{}/s", bytesize::to_string(speed as u64, false)); // MB/s
+let uploaded = format_bytes(progress as u64);
+let total = format_bytes(length as u64);
+
+let speed = progress as f64 / elapsed_secs;
+let speed_str = format!("{}/s", format_bytes(speed as u64));
 
 let remaining = length.saturating_sub(progress);
 let eta_secs = if speed > 0.0 {
@@ -393,26 +408,26 @@ let eta_secs = if speed > 0.0 {
 };
 let eta_str = format_eta(eta_secs);
 
-                let msg_text = format!(
-                    "\n\n⏳ <b>Uploading...</b>\n\n\
-                    [ {} ] {:.2}%\n\n\
-                    ➩ {} of {}\n\n\
-                    ➩ Speed : {}\n\n\
-                    ➩ Time Left : {}\n\n",
-                    progress_bar,
-                    percent * 100.0,
-                    uploaded,
-                    total,
-                    speed_str,
-                    eta_str,
-                );
+let msg_text = format!(
+    "\n\n⏳ <b>Uploading...</b>\n\n\
+    [ {} ] {:.2}%\n\n\
+    ➩ {} of {}\n\n\
+    ➩ Speed : {}\n\n\
+    ➩ Time Left : {}\n\n",
+    progress_bar,
+    percent * 100.0,
+    uploaded,
+    total,
+    speed_str,
+    eta_str,
+);
 
-                status
-                    .lock()
-                    .await
-                    .edit(InputMessage::html(msg_text).reply_markup(reply_markup.as_ref()))
-                    .await
-                    .ok();
+status
+    .lock()
+    .await
+    .edit(InputMessage::html(msg_text).reply_markup(reply_markup.as_ref()))
+    .await
+    .ok();
             });
         }
     });
