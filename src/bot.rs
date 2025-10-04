@@ -166,16 +166,22 @@ async fn handle_upload(&self, msg: Message, cmd: Command) -> Result<()> {
     let parts: Vec<&str> = input.splitn(2, '|').collect();
 
     let url_str = parts[0].trim();
+if url_str.is_empty() {
+    msg.reply("Please specify a valid URL").await?;
+    return Ok(());
+}
+    
     let custom_name = parts.get(1).map(|s| s.trim().to_string());
 
     // Parse the URL
-    let url = match Url::parse(url_str) {
-        Ok(url) => url,
-        Err(err) => {
-            msg.reply(format!("Invalid URL: {}", err)).await?;
-            return Ok(());
-        }
-    };
+    // Parse the URL
+let url = match Url::parse(url_str) {
+    Ok(url) => url,
+    Err(err) => {
+        msg.reply(format!("Invalid URL '{}': {}", url_str, err)).await?;
+        return Ok(());
+    }
+};
 
     // Pass URL and custom name to handle_url
     self.handle_url(msg, url, custom_name).await
