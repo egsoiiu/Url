@@ -339,11 +339,11 @@ let mut stream = stream
                 let eta_str = format_eta(eta_secs);
 
                 let msg_text = format!(
-                    "⏳ <b>Uploading...</b>\n\n\
+                    "\n\n⏳ <b>Uploading...</b>\n\n\
                     [ {} ] {:.2}%\n\n\
-                    ➩ {} of {}\n\
-                    ➩ Speed : {}\n\
-                    ➩ Time Left : {}",
+                    ➩ {} of {}\n\n\
+                    ➩ Speed : {}\n\n\
+                    ➩ Time Left : {}\n\n",
                     progress_bar,
                     percent * 100.0,
                     uploaded,
@@ -366,7 +366,7 @@ let mut stream = stream
 
 
 fn create_progress_bar(percent: f64, width: usize) -> String {
-    let filled = (percent * width as f64).round() as usize;
+    let filled = (percent * width as f64).floor() as usize;
     let empty = width.saturating_sub(filled);
     format!("{}{}", "■".repeat(filled), "□".repeat(empty))
 }
