@@ -18,7 +18,6 @@ use tokio_util::compat::FuturesAsyncReadCompatExt;
 
 use crate::command::{parse_command, Command};
 use rand::seq::SliceRandom; // at the top of your file
-use std::sync::{Arc, Mutex};
 
 
 /// Bot is the main struct of the bot.
@@ -358,7 +357,7 @@ if length == 0 {
    let emojis = ["💗", "⚡", "💫", "❤️", "🦋", "❣️"];
 let random_emoji = emojis.choose(&mut rand::thread_rng()).unwrap();
 
-// Send initial status message (file upload started)
+// Send initial status message
 let status = Arc::new(Mutex::new(
     msg.reply(
         InputMessage::html(format!("🚀 Starting upload of <code>{}</code>...", name))
@@ -366,6 +365,12 @@ let status = Arc::new(Mutex::new(
     )
     .await?,
 ));
+
+// Send random emoji message
+let emoji_msg = Arc::new(Mutex::new(
+    msg.reply(InputMessage::text(random_emoji)).await?,
+));
+
 
 let start_time = Arc::new(chrono::Utc::now());
 
@@ -492,8 +497,7 @@ input_msg = input_msg.document(file); // Always upload as document
 
 msg.reply(input_msg).await?;
 
-
-// Delete both messages after upload finishes
+// Delete both messages
 status.lock().await.delete().await?;
 emoji_msg.lock().await.delete().await?;
         Ok(())
