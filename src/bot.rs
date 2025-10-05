@@ -352,11 +352,22 @@ if length == 0 {
 
     // Your existing upload logic continues here...
 
-        // Send initial status message
+  // Helper function to format file sizes
+fn format_file_size(bytes: u64) -> String {
+    bytesize::to_string(bytes, true)
+        .replace("MiB", "MB")
+        .replace("GiB", "GB")
+}
+
+// Send initial status message
 let status = Arc::new(Mutex::new(
     msg.reply(
-        InputMessage::html(format!("🚀 Starting upload of <code>{}</code>...", name))
-            .reply_markup(reply_markup.clone().as_ref()),
+        InputMessage::html(format!(
+            "<b>{}</b> [{}]\n\nDownloading.....", 
+            name, 
+            format_file_size(length as u64)
+        ))
+        .reply_markup(reply_markup.clone().as_ref()),
     )
     .await?,
 ));
@@ -380,73 +391,62 @@ let mut stream = stream
             let start_time = start_time.clone();
 
             tokio::spawn(async move {
-let now = chrono::Utc::now();
-let elapsed_secs = (now - *start_time).num_seconds().max(1) as f64;
+                let now = chrono::Utc::now();
+                let elapsed_secs = (now - *start_time).num_seconds().max(1) as f64;
 
-let percent = progress as f64 / length as f64;
-let progress_bar = create_progress_bar(percent, 10);
+                let percent = progress as f64 / length as f64;
+                let progress_bar = create_progress_bar(percent, 10);
 
-// Helper closure to convert bytes to binary units with "MB"/"GB" labels
-let format_bytes = |bytes: u64| -> String {
-    bytesize::to_string(bytes, true)
-        .replace("MiB", "MB")
-        .replace("GiB", "GB")
-};
+                // Inline function to format ETA as "1 min 45 sec" or "45 sec"
+                let format_eta = |seconds: u64| -> String {
+                    if seconds >= 60 {
+                        let minutes = seconds / 60;
+                        let secs = seconds % 60;
+                        if secs > 0 {
+                            format!("{} min {} sec", minutes, secs)
+                        } else {
+                            format!("{} min", minutes)
+                        }
+                    } else {
+                        format!("{} sec", seconds)
+                    }
+                };
 
-// Inline function to format ETA as "1 min 45 sec" or "45 sec"
-let format_eta = |seconds: u64| -> String {
-    if seconds >= 60 {
-        let minutes = seconds / 60;
-        let secs = seconds % 60;
-        if secs > 0 {
-            format!("{} min {} sec", minutes, secs)
-        } else {
-            format!("{} min", minutes)
-        }
-    } else {
-        format!("{} sec", seconds)
-    }
-};
+                let uploaded = format_file_size(progress as u64);
+                let total = format_file_size(length as u64);
 
-let uploaded = format_bytes(progress as u64);
-let total = format_bytes(length as u64);
+                let speed = progress as f64 / elapsed_secs;
+                let speed_str = format!("{}/s", format_file_size(speed as u64));
 
-let speed = progress as f64 / elapsed_secs;
-let speed_str = format!("{}/s", format_bytes(speed as u64));
+                let remaining = length.saturating_sub(progress);
+                let eta_secs = if speed > 0.0 {
+                    (remaining as f64 / speed).round() as u64
+                } else {
+                    0
+                };
+                let eta_str = format_eta(eta_secs);
 
-let remaining = length.saturating_sub(progress);
-let eta_secs = if speed > 0.0 {
-    (remaining as f64 / speed).round() as u64
-} else {
-    0
-};
-let eta_str = format_eta(eta_secs);
+                let msg_text = format!(
+                    "<b>{}</b> [{}]\n\nDownload complete ✓\n\n\n\n⏳ Uploading...\n\n[ {} ] {:.2}%\n\n➩ {} of {}\n\n➩ Speed : {}\n\n➩ Time Left : {}",
+                    name,
+                    total,
+                    progress_bar,
+                    percent * 100.0,
+                    uploaded,
+                    total,
+                    speed_str,
+                    eta_str,
+                );
 
-let msg_text = format!(
-    "\n\n⏳ <b>Uploading...</b>\n\n\
-    [ {} ] {:.2}%\n\n\
-    ➩ {} of {}\n\n\
-    ➩ Speed : {}\n\n\
-    ➩ Time Left : {}\n\n",
-    progress_bar,
-    percent * 100.0,
-    uploaded,
-    total,
-    speed_str,
-    eta_str,
-);
-
-
-status
-    .lock()
-    .await
-    .edit(InputMessage::html(msg_text).reply_markup(reply_markup.as_ref()))
-    .await
-    .ok();
+                status
+                    .lock()
+                    .await
+                    .edit(InputMessage::html(msg_text).reply_markup(reply_markup.as_ref()))
+                    .await
+                    .ok();
             });
         }
     });
-
 
 
 
