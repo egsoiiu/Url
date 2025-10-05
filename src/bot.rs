@@ -17,8 +17,6 @@ use tokio::sync::Mutex;
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 
 use crate::command::{parse_command, Command};
-use rand::seq::SliceRandom; // at the top of your file
-
 
 /// Bot is the main struct of the bot.
 /// All the bot logic is implemented in this struct.
@@ -354,10 +352,7 @@ if length == 0 {
 
     // Your existing upload logic continues here...
 
-let emojis = ["💗", "⚡", "💫", "❤️", "🦋", "❣️"];
-let random_emoji = emojis.choose(&mut rand::thread_rng()).unwrap();
-
-// Send status message (replies to msg)
+        // Send initial status message
 let status = Arc::new(Mutex::new(
     msg.reply(
         InputMessage::html(format!("🚀 Starting upload of <code>{}</code>...", name))
@@ -365,16 +360,6 @@ let status = Arc::new(Mutex::new(
     )
     .await?,
 ));
-
-// Send emoji as standalone message
-let emoji_msg = Arc::new(Mutex::new(
-    msg.chat().send(InputMessage::text(random_emoji)).await?,
-));
-
-// Store the emoji message for possible deletion later
-self.emoji_messages.insert(msg.chat().id(), emoji_msg.clone());
-
-// ... upload logic happens ...
 
 let start_time = Arc::new(chrono::Utc::now());
 
@@ -501,10 +486,10 @@ input_msg = input_msg.document(file); // Always upload as document
 
 msg.reply(input_msg).await?;
 
-// Delete both messages// Delete messages after upload
-status.lock().await.delete().await?;
-emoji_msg.lock().await.delete().await?;
-self.emoji_messages.remove(&msg.chat().id());
+
+        // Delete status message
+        status.lock().await.delete().await?;
+
         Ok(())
     }
 
