@@ -363,7 +363,7 @@ fn format_file_size(bytes: u64) -> String {
 let status = Arc::new(Mutex::new(
     msg.reply(
         InputMessage::html(format!(
-            "ㅤ\n&gt; File Name : {}\n&gt; Size : {}",
+            "<blockquote>📥 <b>Download Started</b>\n\n<b>File Name:</b> {}\n<b>Size:</b> {}</blockquote>",
             name,
             format_file_size(length as u64)
         ))
@@ -371,7 +371,6 @@ let status = Arc::new(Mutex::new(
     )
     .await?,
 ));
-
 
 let start_time = Arc::new(chrono::Utc::now());
 
