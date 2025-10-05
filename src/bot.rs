@@ -427,16 +427,16 @@ let mut stream = stream
                 let eta_str = format_eta(eta_secs);
 
                 let msg_text = format!(
-                    "<b>{}</b> [{}]\n\nDownload complete ✓\n\n\n\n⏳ Uploading...\n\n[ {} ] {:.2}%\n\n➩ {} of {}\n\n➩ Speed : {}\n\n➩ Time Left : {}",
-                    name,
-                    total,
-                    progress_bar,
-                    percent * 100.0,
-                    uploaded,
-                    total,
-                    speed_str,
-                    eta_str,
-                );
+    "<blockquote><b>File Name:</b> {}\n<b>Size:</b> {}</blockquote>\n\nDownload Completed ✓\n\n\n⏳ Uploading...\n\n[ {} ] {:.2}%\n\n➩ {} of {}\n\n➩ Speed : {}\n\n➩ Time Left : {}",
+    name,
+    total,
+    progress_bar,
+    percent * 100.0,
+    uploaded,
+    total,
+    speed_str,
+    eta_str,
+);
 
                 status
                     .lock()
