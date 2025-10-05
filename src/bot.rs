@@ -427,7 +427,7 @@ let mut stream = stream
                 let eta_str = format_eta(eta_secs);
 
   let msg_text = format!(
-    "<blockquote><br><br>📄 <b>File Name:</b> <a href=\"https://example.com/file.zip\">{}</a><br><br>💾 <b>Size:</b> {}<br><br><br></blockquote>Download Completed ✓<br><br>⏳ Uploading...<br><br>[ {} ] {:.2}%<br><br>➩ {} of {}<br><br>➩ Speed : {}<br><br>➩ Time Left : {}",
+    "<blockquote><br><br>📄 <b>File Name:</b> <a href=\"https://example.com/file.zip\">{}</a><br><br>💾 <b>Size:</b> {}<br><br><br></blockquote>\n\nDownload Completed ✓\n\n\n⏳ Uploading...\n\n[ {} ] {:.2}%\n\n➩ {} of {}\n\n➩ Speed : {}\n\n➩ Time Left : {}",
     name,
     total,
     progress_bar,
