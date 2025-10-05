@@ -151,12 +151,17 @@ async fn handle_message(&self, msg: Message) -> Result<()> {
     Ok(())
 }
 
-/// Handle the /start command.
-/// This command is sent when the user starts a conversation with the bot.
-/// It will reply with a welcome message.
+// --- Paste this handle_start function ---
 async fn handle_start(&self, msg: Message) -> Result<()> {
-    msg.reply(InputMessage::html(
-    "𝑊𝑒𝑙𝑐𝑜𝑚𝑒 𝑡𝑜 𝑈𝑅𝐿 𝑈𝑝𝑙𝑜𝑎𝑑𝑒𝑟 𝑏𝑜𝑡\n\
+    let reply_markup = reply_markup::inline(vec![
+        vec![
+            button::inline("Help", "help"),
+            button::inline("Sample", "sample"),
+        ],
+    ]);
+    msg.reply(
+        InputMessage::html(
+            "𝑊𝑒𝑙𝑐𝑜𝑚𝑒 𝑡𝑜 𝑈𝑅𝐿 𝑈𝑝𝑙𝑜𝑎𝑑𝑒𝑟 𝑏𝑜𝑡\n\
 \n\
 𝐶𝑢𝑠𝑡𝑜𝑚 𝑓𝑖𝑙𝑒 𝑛𝑎𝑚𝑖𝑛𝑔\n\
     ➠ 𝑈𝑅𝐿 | 𝐹𝑖𝑙𝑒_𝑁𝑎𝑚𝑒\n\
@@ -167,12 +172,8 @@ async fn handle_start(&self, msg: Message) -> Result<()> {
 ㅤ➠ 𝑐𝑢𝑠𝑡𝑜𝑚 𝑓𝑖𝑙𝑒 𝑛𝑎𝑚𝑒 𝑤𝑖𝑡ℎ 𝑎𝑢𝑡𝑜 𝑒𝑥𝑡𝑒𝑛𝑠𝑖𝑜𝑛</blockquote>\n\
 \n\
 ✨ 𝐶𝑜𝑝𝑦 𝑎𝑛𝑑 𝑃𝑎𝑠𝑡𝑒 𝑦𝑜𝑢𝑟 𝑈𝑅𝐿 𝑡𝑜 𝑔𝑒𝑡 𝑠𝑡𝑎𝑟𝑡𝑒𝑑!"
-))
-.await?;
-
-
-
-
+        ).reply_markup(&reply_markup)
+    ).await?;
     Ok(())
 }
 
