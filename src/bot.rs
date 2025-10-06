@@ -15,6 +15,7 @@ use scopeguard::defer;
 use stream_cancel::{Trigger, Valved};
 use tokio::sync::Mutex;
 use tokio_util::compat::FuturesAsyncReadCompatExt;
+use bytes::Bytes;
 
 use crate::command::{parse_command, Command};
 
