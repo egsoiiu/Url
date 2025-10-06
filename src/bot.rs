@@ -2,8 +2,9 @@ use std::{sync::Arc, time::Duration};
 
 use anyhow::Result;
 use async_read_progress::TokioAsyncReadProgressExt;
+use bytes::Bytes;
 use dashmap::{DashMap, DashSet};
-use futures::TryStreamExt;
+use futures::{stream, StreamExt, TryStreamExt};  // Make sure StreamExt is imported
 use grammers_client::{
     button, reply_markup,
     types::{CallbackQuery, Chat, Message, User},
@@ -15,9 +16,9 @@ use scopeguard::defer;
 use stream_cancel::{Trigger, Valved};
 use tokio::sync::Mutex;
 use tokio_util::compat::FuturesAsyncReadCompatExt;
-use bytes::Bytes;
 
 use crate::command::{parse_command, Command};
+
 
 /// Bot is the main struct of the bot.
 /// All the bot logic is implemented in this struct.
@@ -217,11 +218,6 @@ let url = match Url::parse(url_str) {
 }
 
 /// Handle a URL.
-/// This function will download the file and upload it to Telegram.
-/// Supports optional custom file name (without extension).
-/// Handles downloading a file from a URL and uploading it to Telegram.
-/// - If Content-Length is present: streams upload instantly.
-/// - If Content-Length is missing: prefetches some bytes; if any, starts streaming upload.
 async fn handle_url(&self, msg: Message, url: Url, custom_name: Option<String>) -> Result<()> {
     // 1. Identify sender for permission checks (if needed)
     let sender = match msg.sender() {
@@ -337,7 +333,7 @@ async fn handle_url(&self, msg: Message, url: Url, custom_name: Option<String>) 
 
     // 9. Main streaming/upload logic
     let length = response.content_length();
-    let mut http_stream = response.bytes_stream();
+    let http_stream = response.bytes_stream();
 
     if let Some(len) = length {
         // 10a. Content-Length present: stream upload directly
@@ -496,6 +492,8 @@ async fn handle_url(&self, msg: Message, url: Url, custom_name: Option<String>) 
     let mut buffered_size = 0usize;
     let prefetch_size = 32 * 1024; // 32 KB
 
+    // Convert to a stream we can work with
+    let mut http_stream = response.bytes_stream();
     while let Some(chunk) = http_stream.try_next().await? {
         buffered_size += chunk.len();
         buffer.extend_from_slice(&chunk);
@@ -521,9 +519,11 @@ async fn handle_url(&self, msg: Message, url: Url, custom_name: Option<String>) 
     ).await?;
 
     // 11. Combine prefetched buffer with the rest of the HTTP stream for upload
-    let prefetched = futures::stream::once(async move { 
+    let prefetched = stream::once(async move { 
         Ok::<_, reqwest::Error>(Bytes::from(buffer)) 
     });
+    
+    // Create the combined stream - make sure StreamExt is imported for chain()
     let combined_stream = prefetched.chain(http_stream);
     
     // Wrap the combined stream in a valved stream for cancellation
@@ -561,6 +561,10 @@ async fn handle_url(&self, msg: Message, url: Url, custom_name: Option<String>) 
 
     Ok(())
 }
+
+
+
+
 // Helper function to create progress bar
 fn create_progress_bar(percent: f64, width: usize) -> String {
     let filled = (percent * width as f64).floor() as usize;
