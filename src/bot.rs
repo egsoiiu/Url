@@ -327,6 +327,13 @@ async fn handle_url(&self, msg: Message, url: Url, custom_name: Option<String>) 
             .replace("GiB", "GB")
     }
 
+    // Helper function to create progress bar
+    fn create_progress_bar(percent: f64, width: usize) -> String {
+        let filled = (percent * width as f64).floor() as usize;
+        let empty = width.saturating_sub(filled);
+        format!("{}{}", "▣".repeat(filled), "□".repeat(empty))
+    }
+
     // 9. Main streaming/upload logic
     let length = response.content_length();
     let mut http_stream = response.bytes_stream();
@@ -513,8 +520,9 @@ async fn handle_url(&self, msg: Message, url: Url, custom_name: Option<String>) 
     ).await?;
 
     // 11. Combine prefetched buffer with the rest of the HTTP stream for upload
-    use futures::{stream, StreamExt};
-    let prefetched = stream::once(async move { Ok::<_, reqwest::Error>(bytes::Bytes::from(buffer)) });
+    let prefetched = futures::stream::once(async move { 
+        Ok::<_, reqwest::Error>(Bytes::from(buffer)) 
+    });
     let combined_stream = prefetched.chain(http_stream);
     
     // Wrap the combined stream in a valved stream for cancellation
@@ -552,7 +560,6 @@ async fn handle_url(&self, msg: Message, url: Url, custom_name: Option<String>) 
 
     Ok(())
 }
-
 // Helper function to create progress bar
 fn create_progress_bar(percent: f64, width: usize) -> String {
     let filled = (percent * width as f64).floor() as usize;
