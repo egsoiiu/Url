@@ -218,124 +218,308 @@ let url = match Url::parse(url_str) {
 /// Handle a URL.
 /// This function will download the file and upload it to Telegram.
 /// Supports optional custom file name (without extension).
+/// Handles downloading a file from a URL and uploading it to Telegram.
+/// - If Content-Length is present: streams upload instantly.
+/// - If Content-Length is missing: prefetches some bytes; if any, starts streaming upload.
 async fn handle_url(&self, msg: Message, url: Url, custom_name: Option<String>) -> Result<()> {
+    // 1. Identify sender for permission checks (if needed)
     let sender = match msg.sender() {
         Some(sender) => sender,
         None => return Ok(()),
     };
 
-    // Lock the chat to prevent multiple uploads at the same time
+    // 2. Lock the chat to prevent concurrent uploads (per-chat mutex)
     info!("Locking chat {}", msg.chat().id());
     let _lock = self.locks.insert(msg.chat().id());
     if !_lock {
-        msg.reply("✋ Whoa, slow down! There's already an active upload in this chat.")
-            .await?;
+        msg.reply("✋ Whoa, slow down! There's already an active upload in this chat.").await?;
         return Ok(());
     }
     self.started_by.insert(msg.chat().id(), sender.id());
 
-    // Deferred unlock
+    // Ensure unlock even on error/return
     defer! {
         info!("Unlocking chat {}", msg.chat().id());
         self.locks.remove(&msg.chat().id());
         self.started_by.remove(&msg.chat().id());
     };
 
+    // 3. Start HTTP GET request for the file
     info!("Downloading file from {}", url);
     let response = self.http.get(url.clone()).send().await?;
 
-    // Get the file length
-let length = response.content_length().unwrap_or_default() as usize;
-
-// Extract filename from content-disposition or URL path, with extension guessing if missing
-let original_name = match response
-    .headers()
-    .get("content-disposition")
-    .and_then(|value| {
-        value
-            .to_str()
-            .ok()
-            .and_then(|value| {
-                value
-                    .split(';')
-                    .map(|v| v.trim())
-                    .find(|v| v.starts_with("filename="))
+    // 4. Guess filename from Content-Disposition header or URL path
+    let original_name = match response
+        .headers()
+        .get("content-disposition")
+        .and_then(|value| {
+            value
+                .to_str()
+                .ok()
+                .and_then(|value| {
+                    value
+                        .split(';')
+                        .map(|v| v.trim())
+                        .find(|v| v.starts_with("filename="))
+                })
+                .map(|filename| filename.trim_start_matches("filename=").trim_matches('"'))
+        }) {
+        Some(name) => name.to_string(),
+        None => response
+            .url()
+            .path_segments()
+            .and_then(|segments| segments.last())
+            .and_then(|name| {
+                if name.contains('.') {
+                    Some(name.to_string())
+                } else {
+                    response
+                        .headers()
+                        .get("content-type")
+                        .and_then(|value| value.to_str().ok())
+                        .and_then(mime_guess::get_mime_extensions_str)
+                        .and_then(|exts| exts.first())
+                        .map(|ext| format!("{}.{}", name, ext))
+                }
             })
-            .map(|filename| filename.trim_start_matches("filename=").trim_matches('"'))
-    }) {
-    Some(name) => name.to_string(),
-    None => response
-        .url()
-        .path_segments()
-        .and_then(|segments| segments.last())
-        .and_then(|name| {
-            if name.contains('.') {
-                Some(name.to_string())
-            } else {
-                // guess extension from content-type
-                response
-                    .headers()
-                    .get("content-type")
-                    .and_then(|value| value.to_str().ok())
-                    .and_then(mime_guess::get_mime_extensions_str)
-                    .and_then(|exts| exts.first())
-                    .map(|ext| format!("{}.{}", name, ext))
-            }
-        })
-        .unwrap_or_else(|| "file.bin".to_string()),
-};
+            .unwrap_or_else(|| "file.bin".to_string()),
+    };
 
-// Extract extension from original_name, fallback to "bin"
-let ext = original_name
-    .rsplit_once('.')
-    .map(|(_, ext)| ext)
-    .unwrap_or("bin");
+    // 5. Extract or guess file extension
+    let ext = original_name
+        .rsplit_once('.')
+        .map(|(_, ext)| ext)
+        .unwrap_or("bin");
 
-// Compose final filename: use custom_name if given, else original_name
-let name = if let Some(custom) = custom_name {
-    // Case-insensitive check if custom ends with correct extension
-    if custom.to_lowercase().ends_with(&format!(".{}", ext.to_lowercase())) {
-        custom
+    // 6. Compose final file name (use custom if provided, else use guessed)
+    let name = if let Some(custom) = custom_name {
+        if custom.to_lowercase().ends_with(&format!(".{}", ext.to_lowercase())) {
+            custom
+        } else {
+            format!("{}.{}", custom, ext)
+        }
     } else {
-        format!("{}.{}", custom, ext)
+        original_name
+    };
+    let name = percent_encoding::percent_decode_str(&name).decode_utf8()?.to_string();
+
+    // 7. Detect if the file is video/mp4 by content-type or filename extension
+    let is_video = response
+        .headers()
+        .get("content-type")
+        .and_then(|value| value.to_str().ok())
+        .map(|ctype| ctype.starts_with("video/mp4"))
+        .unwrap_or(false)
+        || name.to_lowercase().ends_with(".mp4");
+
+    info!("File {} (video: {})", name, is_video);
+
+    // 8. Prepare a cancel button
+    let reply_markup = Arc::new(reply_markup::inline(vec![vec![button::inline(
+        "Cancel ✗",
+        "cancel",
+    )]]));
+
+    // Helper function to format file sizes
+    fn format_file_size(bytes: u64) -> String {
+        bytesize::to_string(bytes, true)
+            .replace("MiB", "MB")
+            .replace("GiB", "GB")
     }
-} else {
-    original_name
-};
 
+    // 9. Main streaming/upload logic
+    let length = response.content_length();
+    let mut http_stream = response.bytes_stream();
 
-// Percent decode filename
-let name = percent_encoding::percent_decode_str(&name)
-    .decode_utf8()?
-    .to_string();
+    if let Some(len) = length {
+        // 10a. Content-Length present: stream upload directly
+        info!("File size known: {} bytes", len);
+        
+        // Check for empty file
+        if len == 0 {
+            msg.reply("⚠️ File is empty").await?;
+            return Ok(());
+        }
 
-// Detect if the file is video/mp4 by content-type or filename extension
-let is_video = response
-    .headers()
-    .get("content-type")
-    .and_then(|value| value.to_str().ok())
-    .map(|ctype| ctype.starts_with("video/mp4"))
-    .unwrap_or(false)
-    || name.to_lowercase().ends_with(".mp4");
+        // File is too large
+        if len > 2 * 1024 * 1024 * 1024 {
+            msg.reply("⚠️ File is too large").await?;
+            return Ok(());
+        }
 
-info!("File {} ({} bytes, video: {})", name, length, is_video);
+        // Send initial status message
+        let status = Arc::new(Mutex::new(
+            msg.reply(
+                InputMessage::html(format!(
+                    "<blockquote>📥 <b>Download Started</b>\n\n<b>File Name:</b> {}\n<b>Size:</b> {}</blockquote>",
+                    name,
+                    format_file_size(len)
+                ))
+                .reply_markup(reply_markup.clone().as_ref()),
+            )
+            .await?,
+        ));
 
-// Check for empty file
-if length == 0 {
-    msg.reply("⚠️ File is empty").await?;
-    return Ok(());
-}
+        let start_time = Arc::new(chrono::Utc::now());
 
-    // File is too large
-    if length > 2 * 1024 * 1024 * 1024 {
-        msg.reply("⚠️ File is too large").await?;
+        // Wrap the response stream in a valved stream for cancellation
+        let (trigger, stream) = Valved::new(
+            http_stream
+                .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err)),
+        );
+        self.triggers.insert(msg.chat().id(), trigger);
+
+        // Deferred trigger removal
+        defer! {
+            self.triggers.remove(&msg.chat().id());
+        };
+
+        let mut stream = stream
+            .into_async_read()
+            .compat()
+            // Report progress every 3 seconds
+            .report_progress(Duration::from_secs(3), {
+                let status = status.clone();
+                let name = name.clone();
+                let reply_markup = reply_markup.clone();
+                let start_time = start_time.clone();
+
+                move |progress| {
+                    let status = status.clone();
+                    let name = name.clone();
+                    let reply_markup = reply_markup.clone();
+                    let start_time = start_time.clone();
+
+                    tokio::spawn(async move {
+                        let now = chrono::Utc::now();
+                        let elapsed_secs = (now - *start_time).num_seconds().max(1) as f64;
+
+                        let percent = progress as f64 / len as f64;
+                        let progress_bar = create_progress_bar(percent, 10);
+
+                        // Inline function to format ETA as "1 min 45 sec" or "45 sec"
+                        let format_eta = |seconds: u64| -> String {
+                            if seconds >= 60 {
+                                let minutes = seconds / 60;
+                                let secs = seconds % 60;
+                                if secs > 0 {
+                                    format!("{} min {} sec", minutes, secs)
+                                } else {
+                                    format!("{} min", minutes)
+                                }
+                            } else {
+                                format!("{} sec", seconds)
+                            }
+                        };
+
+                        let uploaded = format_file_size(progress as u64);
+                        let total = format_file_size(len);
+
+                        let speed = progress as f64 / elapsed_secs;
+                        let speed_str = format!("{}/s", format_file_size(speed as u64));
+
+                        let remaining = len.saturating_sub(progress as u64);
+                        let eta_secs = if speed > 0.0 {
+                            (remaining as f64 / speed).round() as u64
+                        } else {
+                            0
+                        };
+                        let eta_str = format_eta(eta_secs);
+
+                        let msg_text = format!(
+                            "ㅤ<br> \n <blockquote>ㅤ\n <br><br> 𝐹𝑖𝑙𝑒 𝑛𝑎𝑚𝑒 :  <a href=\"https://example.com/file.zip\">{}</a><br><br> \n\n ㅤㅤ𝑆𝑖𝑧𝑒 :  {}<br><br><br></blockquote>\n\nDownload Completed ✓\n\n\n⏳ Uploading...\n\n[ {} ] {:.2}%\n\n➩ {} of {}\n\n➩ Speed : {}\n\n➩ Time Left : {}",
+                            name,
+                            total,
+                            progress_bar,
+                            percent * 100.0,
+                            uploaded,
+                            total,
+                            speed_str,
+                            eta_str,
+                        );
+
+                        status
+                            .lock()
+                            .await
+                            .edit(InputMessage::html(msg_text).reply_markup(reply_markup.as_ref()))
+                            .await
+                            .ok();
+                    });
+                }
+            });
+
+        // Upload the file
+        let start_time = chrono::Utc::now();
+        let file = self
+            .client
+            .upload_stream(&mut stream, len as usize, name.clone())
+            .await?;
+
+        // Calculate upload time
+        let elapsed = chrono::Utc::now() - start_time;
+        info!("Uploaded file {} ({} bytes) in {}", name, len, elapsed);
+
+        // Send file
+        let mut input_msg = InputMessage::html(name.clone());
+        input_msg = input_msg.document(file); // Always upload as document
+
+        msg.reply(input_msg).await?;
+
+        // Delete status message
+        status.lock().await.delete().await?;
+
         return Ok(());
     }
 
-    // Wrap the response stream in a valved stream
+    // 10b. Content-Length missing: prefetch up to 32KB to check file is not empty
+    info!("Content-Length missing, prefetching to check file content");
+    
+    // Inform user we're starting download
+    let status = Arc::new(Mutex::new(
+        msg.reply(
+            InputMessage::html(format!(
+                "<blockquote>📥 <b>Starting download...</b>\n\n<b>File Name:</b> {}\n<b>Size:</b> Unknown</blockquote>",
+                name
+            )).reply_markup(reply_markup.clone().as_ref()),
+        ).await?,
+    ));
+
+    let mut buffer = Vec::new();
+    let mut buffered_size = 0usize;
+    let prefetch_size = 32 * 1024; // 32 KB
+
+    while let Some(chunk) = http_stream.try_next().await? {
+        buffered_size += chunk.len();
+        buffer.extend_from_slice(&chunk);
+        if buffered_size >= prefetch_size {
+            break;
+        }
+    }
+
+    if buffer.is_empty() {
+        // No data at all -- file is empty or inaccessible
+        status.lock().await.edit(InputMessage::html("⚠️ File is empty or could not be downloaded.")).await?;
+        return Ok(());
+    }
+
+    info!("Prefetched {} bytes, file has content - proceeding with upload", buffered_size);
+
+    // Update status to show we're uploading
+    status.lock().await.edit(
+        InputMessage::html(format!(
+            "<blockquote>📤 <b>Uploading file...</b>\n\n<b>File Name:</b> {}\n<b>Size:</b> Unknown (streaming)</blockquote>",
+            name
+        )).reply_markup(reply_markup.clone().as_ref())
+    ).await?;
+
+    // 11. Combine prefetched buffer with the rest of the HTTP stream for upload
+    use futures::{stream, StreamExt};
+    let prefetched = stream::once(async move { Ok::<_, reqwest::Error>(bytes::Bytes::from(buffer)) });
+    let combined_stream = prefetched.chain(http_stream);
+    
+    // Wrap the combined stream in a valved stream for cancellation
     let (trigger, stream) = Valved::new(
-        response
-            .bytes_stream()
+        combined_stream
             .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err)),
     );
     self.triggers.insert(msg.chat().id(), trigger);
@@ -345,155 +529,36 @@ if length == 0 {
         self.triggers.remove(&msg.chat().id());
     };
 
-    // Reply markup buttons
-    let reply_markup = Arc::new(reply_markup::inline(vec![vec![button::inline(
-        "Cancel ✗",
-        "cancel",
-    )]]));
+    let mut combined_reader = stream.into_async_read().compat();
 
-    // Your existing upload logic continues here...
+    // 12. Start upload to Telegram (unknown total length: pass 0)
+    let start_time = chrono::Utc::now();
+    let file = self
+        .client
+        .upload_stream(&mut combined_reader, 0, name.clone())
+        .await?;
 
-  // Helper function to format file sizes
-fn format_file_size(bytes: u64) -> String {
-    bytesize::to_string(bytes, true)
-        .replace("MiB", "MB")
-        .replace("GiB", "GB")
+    // Calculate upload time
+    let elapsed = chrono::Utc::now() - start_time;
+    info!("Uploaded file {} (unknown size) in {}", name, elapsed);
+
+    // Send file
+    let mut input_msg = InputMessage::html(name.clone());
+    input_msg = input_msg.document(file);
+    msg.reply(input_msg).await?;
+
+    // Delete status message
+    status.lock().await.delete().await?;
+
+    Ok(())
 }
 
-// Send initial status message
-let status = Arc::new(Mutex::new(
-    msg.reply(
-        InputMessage::html(format!(
-            "<blockquote>📥 <b>Download Started</b>\n\n<b>File Name:</b> {}\n<b>Size:</b> {}</blockquote>",
-            name,
-            format_file_size(length as u64)
-        ))
-        .reply_markup(reply_markup.clone().as_ref()),
-    )
-    .await?,
-));
-
-let start_time = Arc::new(chrono::Utc::now());
-
-let mut stream = stream
-    .into_async_read()
-    .compat()
-    // Report progress every 3 seconds
-    .report_progress(Duration::from_secs(3), {
-        let status = status.clone();
-        let name = name.clone();
-        let reply_markup = reply_markup.clone();
-        let start_time = start_time.clone();
-
-        move |progress| {
-            let status = status.clone();
-            let name = name.clone();
-            let reply_markup = reply_markup.clone();
-            let start_time = start_time.clone();
-
-            tokio::spawn(async move {
-                let now = chrono::Utc::now();
-                let elapsed_secs = (now - *start_time).num_seconds().max(1) as f64;
-
-                let percent = progress as f64 / length as f64;
-                let progress_bar = create_progress_bar(percent, 10);
-
-                // Inline function to format ETA as "1 min 45 sec" or "45 sec"
-                let format_eta = |seconds: u64| -> String {
-                    if seconds >= 60 {
-                        let minutes = seconds / 60;
-                        let secs = seconds % 60;
-                        if secs > 0 {
-                            format!("{} min {} sec", minutes, secs)
-                        } else {
-                            format!("{} min", minutes)
-                        }
-                    } else {
-                        format!("{} sec", seconds)
-                    }
-                };
-
-                let uploaded = format_file_size(progress as u64);
-                let total = format_file_size(length as u64);
-
-                let speed = progress as f64 / elapsed_secs;
-                let speed_str = format!("{}/s", format_file_size(speed as u64));
-
-                let remaining = length.saturating_sub(progress);
-                let eta_secs = if speed > 0.0 {
-                    (remaining as f64 / speed).round() as u64
-                } else {
-                    0
-                };
-                let eta_str = format_eta(eta_secs);
-
-  let msg_text = format!(
-    "ㅤ<br> \n <blockquote>ㅤ\n <br><br> 𝐹𝑖𝑙𝑒 𝑛𝑎𝑚𝑒 :  <a href=\"https://example.com/file.zip\">{}</a><br><br> \n\n ㅤㅤ𝑆𝑖𝑧𝑒 :  {}<br><br><br></blockquote>\n\nDownload Completed ✓\n\n\n⏳ Uploading...\n\n[ {} ] {:.2}%\n\n➩ {} of {}\n\n➩ Speed : {}\n\n➩ Time Left : {}",
-    name,
-    total,
-    progress_bar,
-    percent * 100.0,
-    uploaded,
-    total,
-    speed_str,
-    eta_str,
-);
-
-                status
-                    .lock()
-                    .await
-                    .edit(InputMessage::html(msg_text).reply_markup(reply_markup.as_ref()))
-                    .await
-                    .ok();
-            });
-        }
-    });
-
-
-
+// Helper function to create progress bar
 fn create_progress_bar(percent: f64, width: usize) -> String {
     let filled = (percent * width as f64).floor() as usize;
     let empty = width.saturating_sub(filled);
     format!("{}{}", "▣".repeat(filled), "□".repeat(empty))
 }
-
-fn format_eta(seconds: u64) -> String {
-    let mins = seconds / 60;
-    let secs = seconds % 60;
-    format!("{:02} min {:02} sec", mins, secs)
-}
-
-            
-            
-            
-            
-
-        // Upload the file
-        let start_time = chrono::Utc::now();
-        let file = self
-            .client
-            .upload_stream(&mut stream, length, name.clone())
-            .await?;
-
-        // Calculate upload time
-        let elapsed = chrono::Utc::now() - start_time;
-        info!("Uploaded file {} ({} bytes) in {}", name, length, elapsed);
-
-        // Send file
-let mut input_msg = InputMessage::html(name.clone());
-input_msg = input_msg.document(file); // Always upload as document
-
-
-
-msg.reply(input_msg).await?;
-
-
-        // Delete status message
-        status.lock().await.delete().await?;
-
-        Ok(())
-    }
-
 
 
 // --- Paste this in your handle_callback function ---
